@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loan Calculator with Prepayment</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f4f4f9; padding: 20px; color: #333; }
+        .container { max-width: 950px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #2c3e50; }
+        
+        /* Input Section */
+        .inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; padding: 15px; background: #eef2f5; border-radius: 8px; }
+        .input-group { display: flex; flex-direction: column; }
+        
+        .prepayment-section { grid-column: 1 / -1; background: #dceefb; padding: 10px; border-radius: 6px; border: 1px solid #b3d7ff; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .prepayment-title { grid-column: 1 / -1; font-weight: bold; color: #0056b3; margin-bottom: 5px; }
+
+        label { font-size: 14px; font-weight: bold; margin-bottom: 5px; color: #555; }
+        input { padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
+        button { grid-column: 1 / -1; padding: 12px; background-color: #27ae60; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        button:hover { background-color: #219150; }
+
+        /* Summary Table */
+        .summary-section { margin-bottom: 30px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: right; }
+        th { background-color: #34495e; color: white; text-align: center; }
+        .col-month { text-align: center; font-weight: bold; background: #f9f9f9; width: 80px; }
+        
+        .opt-a { background-color: #fff3cd; color: #856404; } /* Yellowish for Flat */
+        .opt-b { background-color: #d4edda; color: #155724; } /* Greenish for Reducing */
+        .winner { font-weight: bold; color: green; }
+        .loser { font-weight: bold; color: #c0392b; }
+        
+        .prepay-row { background-color: #cce5ff !important; font-weight: bold; }
+
+        /* Scrollable Detailed Table */
+        .table-wrapper { max-height: 500px; overflow-y: auto; border: 1px solid #ccc; }
+        thead th { position: sticky; top: 0; z-index: 1; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Loan Calculator + Prepayment</h2>
+    
+    <div class="inputs">
+        <div class="input-group">
+            <label>Principal Amount (₹)</label>
+            <input type="number" id="principal" value="750000">
+        </div>
+        <div class="input-group">
+            <label>Monthly EMI Payment (₹)</label>
+            <input type="number" id="emi" value="20000">
+        </div>
+        <div class="input-group">
+            <label>Opt A: Flat Rate (Rupees)</label>
+            <input type="number" id="rateFlat" value="1.5" step="0.1">
+        </div>
+        <div class="input-group">
+            <label>Opt B: Reducing Rate (Rupees)</label>
+            <input type="number" id="rateRed" value="2.0" step="0.1">
+        </div>
+
+        <div class="prepayment-section">
+            <div class="prepayment-title">⚡ One-time Extra Payment (Optional)</div>
+            <div class="input-group">
+                <label>Amount (₹)</label>
+                <input type="number" id="prepayAmt" value="100000" placeholder="e.g. 100000">
+            </div>
+            <div class="input-group">
+                <label>Pay at Month #</label>
+                <input type="number" id="prepayMonth" value="12" placeholder="e.g. 12">
+            </div>
+        </div>
+
+        <button onclick="calculate()">Recalculate</button>
+    </div>
+
+    <div class="summary-section">
+        <h3>Summary Comparison</h3>
+        <table id="summaryTable">
+            <thead>
+                <tr>
+                    <th>Metric</th>
+                    <th class="opt-a">Option A (Flat Rate)</th>
+                    <th class="opt-b">Option B (Reducing Bal)</th>
+                </tr>
+            </thead>
+            <tbody>
+                </tbody>
+        </table>
+        <p id="warningMsg" style="color: red; text-align: center; font-weight: bold; margin-top: 10px;"></p>
+    </div>
+
+    <h3>Month-by-Month Breakdown</h3>
+    <div class="table-wrapper">
+        <table id="detailedTable">
+            <thead>
+                <tr>
+                    <th rowspan="2">Month</th>
+                    <th colspan="3" class="opt-a">Option A (Flat <span id="lblFlat">1.5</span>)</th>
+                    <th colspan="3" class="opt-b">Option B (Reducing <span id="lblRed">2.0</span>)</th>
+                </tr>
+                <tr>
+                    <th class="opt-a">Interest</th>
+                    <th class="opt-a">Principal</th>
+                    <th class="opt-a">Balance</th>
+                    <th class="opt-b">Interest</th>
+                    <th class="opt-b">Principal</th>
+                    <th class="opt-b">Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+                </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    function formatCurrency(num) {
+        return "₹" + num.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    }
+
+    function calculate() {
+        // Inputs
+        let P = parseFloat(document.getElementById('principal').value);
+        let EMI = parseFloat(document.getElementById('emi').value);
+        let rFlat = parseFloat(document.getElementById('rateFlat').value) / 100; 
+        let rRed = parseFloat(document.getElementById('rateRed').value) / 100; 
+        
+        let prepayAmt = parseFloat(document.getElementById('prepayAmt').value) || 0;
+        let prepayMonth = parseFloat(document.getElementById('prepayMonth').value) || 0;
+
+        // Labels
+        document.getElementById('lblFlat').innerText = (rFlat * 100).toFixed(1);
+        document.getElementById('lblRed').innerText = (rRed * 100).toFixed(1);
+        let warning = document.getElementById('warningMsg');
+        warning.innerText = "";
+
+        // Logic Option A: Flat Rate (Interest constant based on Initial P)
+        let flatMonthlyInt = P * rFlat;
+        let flatBal = P;
+        let flatTotalInt = 0;
+        let flatMonths = 0;
+        let flatData = [];
+        let flatFinished = false;
+
+        // Logic Option B: Reducing Balance
+        let redBal = P;
+        let redTotalInt = 0;
+        let redMonths = 0;
+        let redData = [];
+        let redFinished = false;
+
+        // Safety Checks
+        if (EMI <= flatMonthlyInt && prepayAmt === 0) warning.innerText += " Warning: Flat Rate EMI too low.";
+        if (EMI <= (P * rRed) && prepayAmt === 0) warning.innerText += " Warning: Reducing Rate EMI too low.";
+
+        let maxMonths = 600; 
+        let month = 1;
+
+        while ((!flatFinished || !redFinished) && month <= maxMonths) {
+            
+            let isPrepayMonth = (month === prepayMonth);
+            let currentPrepayA = 0;
+            let currentPrepayB = 0;
+
+            // --- OPTION A (FLAT) ---
+            let fInt = 0, fPrin = 0;
+            if (!flatFinished) {
+                // Prepayment Event
+                if (isPrepayMonth && prepayAmt > 0) {
+                    currentPrepayA = prepayAmt;
+                    if (flatBal <= currentPrepayA) {
+                        currentPrepayA = flatBal; // Cap at balance
+                        flatBal = 0;
+                        flatFinished = true;
+                        flatMonths = month;
+                    } else {
+                        flatBal -= currentPrepayA;
+                    }
+                }
+
+                if (!flatFinished) {
+                    fInt = flatMonthlyInt; // Constant
+                    fPrin = EMI - fInt;
+                    
+                    if (flatBal + fInt <= EMI) {
+                        fInt = flatMonthlyInt; 
+                        fPrin = flatBal;
+                        flatBal = 0;
+                        flatFinished = true;
+                        flatMonths = month;
+                    } else {
+                        flatBal -= fPrin;
+                    }
+                    flatTotalInt += fInt;
+                }
+            }
+            flatData.push({ int: fInt, prin: fPrin, bal: flatBal, done: flatFinished, prepay: currentPrepayA });
+
+
+            // --- OPTION B (REDUCING) ---
+            let rInt = 0, rPrin = 0;
+            if (!redFinished) {
+                // Prepayment Event
+                if (isPrepayMonth && prepayAmt > 0) {
+                    currentPrepayB = prepayAmt;
+                    if (redBal <= currentPrepayB) {
+                        currentPrepayB = redBal;
+                        redBal = 0;
+                        redFinished = true;
+                        redMonths = month;
+                    } else {
+                        redBal -= currentPrepayB;
+                    }
+                }
+
+                if (!redFinished) {
+                    rInt = redBal * rRed; // Recalculated on new low balance!
+                    rPrin = EMI - rInt;
+
+                    if (redBal + rInt <= EMI) {
+                        rInt = redBal * rRed; 
+                        rPrin = redBal;
+                        redBal = 0;
+                        redFinished = true;
+                        redMonths = month;
+                    } else {
+                        redBal -= rPrin;
+                    }
+                    redTotalInt += rInt;
+                }
+            }
+            redData.push({ int: rInt, prin: rPrin, bal: redBal, done: redFinished, prepay: currentPrepayB });
+
+            month++;
+        }
+
+        // --- RENDER SUMMARY ---
+        let tbodySum = document.querySelector('#summaryTable tbody');
+        tbodySum.innerHTML = `
+            <tr>
+                <td><strong>Time to Finish</strong></td>
+                <td class="${flatMonths > redMonths ? 'loser' : 'winner'}">${flatMonths} Months (${(flatMonths/12).toFixed(1)} Yrs)</td>
+                <td class="${redMonths > flatMonths ? 'loser' : 'winner'}">${redMonths} Months (${(redMonths/12).toFixed(1)} Yrs)</td>
+            </tr>
+            <tr>
+                <td><strong>Total Interest Paid</strong></td>
+                <td>${formatCurrency(flatTotalInt)}</td>
+                <td>${formatCurrency(redTotalInt)}</td>
+            </tr>
+            <tr>
+                <td><strong>Total Repaid (Principal + Int)</strong></td>
+                <td>${formatCurrency(P + flatTotalInt)} (excl prepay)</td>
+                <td>${formatCurrency(P + redTotalInt)} (excl prepay)</td>
+            </tr>
+        `;
+
+        // --- RENDER DETAILED TABLE ---
+        let tbodyDet = document.querySelector('#detailedTable tbody');
+        tbodyDet.innerHTML = "";
+        
+        let loopLimit = Math.max(flatData.length, redData.length);
+        
+        for(let i=0; i<loopLimit; i++) {
+            let f = flatData[i] || { int:0, prin:0, bal:0, prepay:0 };
+            let r = redData[i] || { int:0, prin:0, bal:0, prepay:0 };
+            
+            let fBalDisplay = f.bal <= 0 ? "-" : formatCurrency(f.bal);
+            let rBalDisplay = r.bal <= 0 ? "-" : formatCurrency(r.bal);
+
+            let rowClass = (f.prepay > 0 || r.prepay > 0) ? "prepay-row" : "";
+            let monthLabel = `Month ${i+1}`;
+            if(f.prepay > 0 || r.prepay > 0) monthLabel += " <br><small>⚡ Prepayment!</small>";
+
+            let row = `<tr class="${rowClass}">
+                <td class="col-month">${monthLabel}</td>
+                <td class="opt-a">${formatCurrency(f.int)}</td>
+                <td class="opt-a">${formatCurrency(f.prin)} ${f.prepay > 0 ? "<br>+"+formatCurrency(f.prepay) : ""}</td>
+                <td class="opt-a"><strong>${fBalDisplay}</strong></td>
+                <td class="opt-b">${formatCurrency(r.int)}</td>
+                <td class="opt-b">${formatCurrency(r.prin)} ${r.prepay > 0 ? "<br>+"+formatCurrency(r.prepay) : ""}</td>
+                <td class="opt-b"><strong>${rBalDisplay}</strong></td>
+            </tr>`;
+            tbodyDet.innerHTML += row;
+        }
+    }
+
+    calculate();
+</script>
+
+</body>
+</html>
